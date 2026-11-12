@@ -1,0 +1,12 @@
+[package]
+name = "ferrodb"
+version = "0.1.0"
+description = "A multi-threaded, Redis-compatible in-memory database with AOF persistence and pub/sub"
+license = "MIT"
+edition = "2024"
+
+
+
+[profile.release]
+lto = true
+codegen-units = 1
