@@ -1,5 +1,7 @@
 # ferrodb
 
+[![CI](https://github.com/jeremiahpetion03/ferrodb/actions/workflows/ci.yml/badge.svg)](https://github.com/jeremiahpetion03/ferrodb/actions/workflows/ci.yml)
+
 A multi-threaded, **Redis-compatible** in-memory database written in Rust with **zero dependencies**. Everything is built on the standard library: the wire protocol, the storage engine, persistence, pub/sub, and glob matching.
 
 Real Redis tooling works against it out of the box: `redis-cli`, `redis-benchmark`, and any Redis client library.
@@ -123,7 +125,7 @@ cargo test
 - log compaction shrinking the file by more than 10× and still replaying correctly
 - recovery from a torn (half-written) final command
 
-`cargo clippy --all-targets` is clean.
+`cargo clippy --all-targets` is clean, and CI enforces both on every push.
 
 ## Usage
 
@@ -131,6 +133,32 @@ cargo test
 ferrodb [--bind 127.0.0.1] [--port 6379] [--shards 64]
         [--appendonly <path>] [--appendfsync always|everysec|no]
 ```
+
+## Running with Docker
+
+```bash
+docker compose up -d          # build and start, with persistence enabled
+redis-cli PING                # → PONG
+docker compose restart        # data survives: it lives in a named volume
+```
+
+The image is production-shaped:
+
+- **Multi-stage build:** compiled in the full Rust image, shipped on `debian:bookworm-slim`.
+- **Non-root:** runs as an unprivileged user (uid 10001).
+- **Health check:** speaks RESP over bash's `/dev/tcp`, so the image needs no extra packages.
+- **Graceful stop:** ferrodb runs as PID 1. `docker stop` sends SIGTERM straight to it, and it fsyncs the AOF before exiting.
+- **Persistence:** the AOF lives on a `/data` volume.
+
+## Continuous integration
+
+Every push runs three GitHub Actions jobs:
+
+| Job | What it checks |
+|---|---|
+| **Lint & test** | `cargo fmt --check`, `clippy -D warnings`, all 23 tests |
+| **Redis compatibility** | Drives the server with the official `redis-cli` and runs `redis-benchmark`. Results are posted to the job summary. |
+| **Docker image** | Builds the image, waits for the health check to pass, then restarts the container and verifies the data survived |
 
 ## Possible extensions
 
