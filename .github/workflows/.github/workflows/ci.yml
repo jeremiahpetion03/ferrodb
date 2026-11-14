@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Lint (clippy, warnings are errors)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Build
+        run: cargo build --release
+      - name: Run tests
+        run: cargo test --release
+
+      - name: Smoke test with the real redis-cli
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq redis-tools
+          ./target/release/ferrodb --port 7000 &
+          for i in $(seq 1 20); do redis-cli -p 7000 PING && break; sleep 0.5; done
+          redis-cli -p 7000 SET greeting "hello from CI" EX 60
+          test "$(redis-cli -p 7000 GET greeting)" = "hello from CI"
+          redis-cli -p 7000 RPUSH queue a b c
+          test "$(redis-cli -p 7000 LLEN queue)" = "3"
+          redis-benchmark -p 7000 -t set,get -n 20000 -q
