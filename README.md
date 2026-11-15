@@ -89,17 +89,19 @@ TCP ──► read ──► RESP parser ──► dispatch ──► command �
 
 ## Benchmarks
 
-`redis-benchmark`, 50 clients, on a **2-vCPU** cloud VM (the benchmark tool shares the same 2 cores). Compared against Redis 7.0.15 on the same machine:
+`redis-benchmark`, 50 clients, on my laptop: 4 cores, Ubuntu on WSL2, with the benchmark tool sharing the same cores. Compared against Redis 8.0.5 on the same machine:
 
-| Workload | ferrodb | Redis 7.0 |
+| Workload | ferrodb | Redis 8.0 |
 |---|---:|---:|
-| `SET` | 104k ops/s | 135k ops/s |
-| `GET` | 113k ops/s | 147k ops/s |
-| `SET`, pipelined ×16 | **1.1M ops/s** | 1.9M ops/s |
-| `GET`, pipelined ×16 | **1.2M ops/s** | 2.1M ops/s |
-| `SET` with AOF (everysec) | 90k ops/s | 114k ops/s |
+| `SET` | 10.6k ops/s | 60.4k ops/s |
+| `GET` | 16.6k ops/s | 60.1k ops/s |
+| `SET`, pipelined ×16 | **208k ops/s** | 548k ops/s |
+| `GET`, pipelined ×16 | **259k ops/s** | 636k ops/s |
+| `SET` with AOF (everysec) | 14.6k ops/s | 69.0k ops/s |
 
-ferrodb reaches about 75–80% of Redis's unpipelined throughput while being a fraction of the code. On 2 cores, its 50 client threads mostly cost context switches. The sharded design is built for many-core machines, where Redis's single command thread becomes the bottleneck.
+Redis is faster in every row. ferrodb reaches about 38–41% of Redis's pipelined throughput and less when unpipelined. That's expected: Redis is a decade of optimization on a single event-loop thread, while ferrodb uses one OS thread per client. With 50 clients on 4 virtualized cores, ferrodb spends much of its time on context switches rather than commands, and WSL2 makes those switches more expensive. Pipelining amortizes that cost over 16 commands, which is why the gap narrows. Runs on a laptop are noisy. For example, the AOF run came out slightly faster than the plain SET run, which is variance, not a real effect.
+
+**Why [ferrobench](https://github.com/jeremiahpetion03/ferrobench) shows the opposite.** On ferrobench's mixed, verified workload, ferrodb came out about 1.4× ahead. ferrobench's Go client does real work per reply (building commands and checking every result), so it competes with the server for the same 4 cores. My best explanation is that under that contention, the OS scheduler gives ferrodb's many threads more total CPU time than Redis's single thread. The lesson I took from it: a benchmark measures a workload *and* a machine, not just a server. That's why I report both.
 
 Run them yourself:
 
@@ -108,7 +110,6 @@ cargo build --release
 ./target/release/ferrodb --port 7000 &
 redis-benchmark -p 7000 -t set,get -n 1000000 -c 50 -P 16 -q
 ```
-
 ## Testing
 
 ```bash
